@@ -1,0 +1,21 @@
+# Stripe Webhookの署名シークレット（Stripeダッシュボード → 開発者 → Webhook）
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# freeeアプリ（stripe-freee-bridge 専用に登録したもの。freee-setup とは別アプリ）
+FREEE_CLIENT_ID=
+FREEE_CLIENT_SECRET=
+
+# 投入先の事業所。テスト用事業所のみを指定する。
+FREEE_COMPANY_ID=
+
+# 承認・投入APIを叩くための管理トークン（任意の長い文字列）
+ADMIN_TOKEN=
+
+# 投入を禁止する事業所ID（カンマ区切り）。本番の帳簿を設定ミスで汚さないための安全弁。
+FREEE_BLOCKED_COMPANY_IDS=
+
+# Stripeの秘密鍵（手数料の取得に使う）
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxx
+
+# 照合で差が出たときの通知先
+DISCORD_WEBHOOK_URL=

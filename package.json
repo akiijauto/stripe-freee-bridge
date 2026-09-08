@@ -1,0 +1,23 @@
+{
+  "name": "stripe-freee-bridge",
+  "version": "0.1.0",
+  "description": "Stripeで受けた売上をfreee会計の仕訳へ計上する連携（Cloudflare Workers + D1）",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy -c wrangler.local.jsonc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types",
+    "db:init": "wrangler d1 execute stripe-freee-bridge --file=schema.sql",
+    "db:init:remote": "wrangler d1 execute stripe-freee-bridge -c wrangler.local.jsonc --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.129.0"
+  }
+}

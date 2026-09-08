@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+worker-configuration.d.ts
+
+# 実D1 IDを含む本番用設定。wrangler.jsonc（公開テンプレート）とは別に自分で用意する。
+wrangler.local.jsonc
+.freee-app-credentials.txt

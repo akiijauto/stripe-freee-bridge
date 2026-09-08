@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stripe-freee-bridge",
+  "main": "src/index.ts",
+  // 手元のwranglerに同梱されたworkerdが対応する上限日付。これより新しい日付にすると
+  // ローカル実行が "newest date supported by this server binary" で起動しない。
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+
+  // 毎日 JST 07:00（UTC 22:00）に Stripe と freee を照合する。
+  "triggers": {
+    "crons": ["0 22 * * *"]
+  },
+
+  // wrangler d1 create stripe-freee-bridge で発行されたIDを wrangler.local.jsonc 側へ書く。
+  // このファイルは公開テンプレートなのでプレースホルダーのまま置く。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stripe-freee-bridge",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ]
+
+  // 秘密情報はここに書かない。Workers Secretsへ入れる:
+  //   wrangler secret put STRIPE_WEBHOOK_SECRET -c wrangler.local.jsonc
+}
