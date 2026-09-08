@@ -2,6 +2,7 @@ import { verifyStripeSignature } from './stripe-signature';
 import { buildJournalFromEvent, JournalError, type JournalDraft, type JournalLine, type StripeEvent } from './journal';
 import { FreeePostError, postJournal, type PostEnv } from './freee-post';
 import { buildAuthorizeUrl, exchangeAndStore, FreeeAuthorizeError } from './freee-authorize';
+import { getAccessToken } from './freee-token';
 import { fetchChargeFee, StripeApiError, type StripeApiEnv } from './stripe-api';
 import { notifyIfFindings, reconcile, type ReconcileEnv } from './reconcile';
 
@@ -284,6 +285,51 @@ async function handlePost(request: Request, env: Env, draftId: number): Promise<
   }
 }
 
+
+/**
+ * 権限の疎通確認。**状態コードだけを返し、トークンもデータ本体も返さない。**
+ *
+ * freeeは権限の変更を「再認可したときだけ」反映する（リフレッシュでは変わらない）。
+ * 設定したつもりで効いていない、が起きやすいので、実際に叩いて確かめる口を用意する。
+ */
+async function handleFreeeProbe(env: Env): Promise<Response> {
+  const companyId = env.FREEE_COMPANY_ID ?? '';
+  const token = await getAccessToken(env);
+
+  const targets: { label: string; path: string }[] = [
+    { label: '[会計] 事業所', path: `/api/1/companies/${companyId}` },
+    { label: '[会計] 勘定科目', path: `/api/1/account_items?company_id=${companyId}&limit=1` },
+    { label: '[会計] 税区分', path: `/api/1/taxes/companies/${companyId}` },
+    { label: '[会計] 取引先', path: `/api/1/partners?company_id=${companyId}&limit=1` },
+    { label: '[会計] 振替伝票', path: `/api/1/manual_journals?company_id=${companyId}&limit=1` },
+    { label: '[会計] 仕訳帳', path: `/api/1/journals?company_id=${companyId}&download_type=csv` },
+    { label: '[会計] 貸借対照表', path: `/api/1/reports/trial_bs?company_id=${companyId}` },
+    { label: '[会計] 損益計算書', path: `/api/1/reports/trial_pl?company_id=${companyId}` },
+    // 権限一覧に有るが、プラン制限の有無を確かめたいもの
+    { label: '[会計] 固定資産（プラン制限の検証）', path: `/api/1/fixed_assets?company_id=${companyId}&target_date=2026-01-01&limit=1` },
+    { label: '[会計] 総勘定元帳（同上）', path: `/api/1/reports/general_ledgers?company_id=${companyId}&start_date=2026-01-01&end_date=2026-12-31&account_item_id=1` },
+  ];
+
+  const results = [];
+  for (const t of targets) {
+    try {
+      const res = await fetch(`https://api.freee.co.jp${t.path}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      let detail = '';
+      if (!res.ok) {
+        const body = await res.text();
+        // 本体は返さない。原因の切り分けに要る部分だけを短く抜く。
+        detail = body.slice(0, 200);
+      }
+      results.push({ label: t.label, status: res.status, ok: res.ok, detail });
+    } catch (e) {
+      results.push({ label: t.label, status: 0, ok: false, detail: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return json({ companyId, results });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -312,6 +358,11 @@ export default {
         if (e instanceof FreeeAuthorizeError) return json({ error: e.message }, 400);
         throw e;
       }
+    }
+
+    if (url.pathname === '/admin/freee/probe') {
+      if (!isAdmin(request, env)) return json({ error: 'unauthorized' }, 401);
+      return handleFreeeProbe(env);
     }
 
     if (url.pathname === '/admin/reconcile') {
