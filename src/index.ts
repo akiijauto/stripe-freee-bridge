@@ -330,6 +330,51 @@ async function handleFreeeProbe(env: Env): Promise<Response> {
   return json({ companyId, results });
 }
 
+/**
+ * **読み取り専用**のマスタ取得。keiri-erp の `PRE-3`（科目・税区分の実取得）のために足した口。
+ *
+ * 守っていること:
+ * - **事業所IDをリクエストから受け取らない。**必ず `FREEE_COMPANY_ID`（テスト事業所）を使う
+ * - `FREEE_BLOCKED_COMPANY_IDS` に入っていたら拒否する（投入側と同じ安全弁）
+ * - **GETしか投げない。**freeeへ書き込む経路をこの関数は持たない
+ * - **アクセストークンを応答へ含めない**
+ * - 帳簿データ（仕訳・取引）は取らない。**マスタだけ**
+ */
+async function handleFreeeMaster(env: Env): Promise<Response> {
+  const companyId = Number(env.FREEE_COMPANY_ID);
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    return json({ error: 'FREEE_COMPANY_ID が設定されていません' }, 500);
+  }
+  const blocked = (env.FREEE_BLOCKED_COMPANY_IDS ?? '')
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (blocked.includes(companyId)) {
+    return json({ error: `読み取りが禁止されている事業所です: ${companyId}` }, 403);
+  }
+
+  const token = await getAccessToken(env);
+  const targets: { key: string; path: string }[] = [
+    { key: 'account_items', path: `/api/1/account_items?company_id=${companyId}` },
+    { key: 'taxes_company', path: `/api/1/taxes/companies/${companyId}` },
+    { key: 'tax_codes', path: `/api/1/taxes/codes` },
+    { key: 'company', path: `/api/1/companies/${companyId}?details=true` },
+  ];
+
+  const out: Record<string, unknown> = { companyId };
+  for (const t of targets) {
+    const res = await fetch(`https://api.freee.co.jp${t.path}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      out[t.key] = { error: true, status: res.status, detail: (await res.text()).slice(0, 200) };
+      continue;
+    }
+    out[t.key] = await res.json();
+  }
+  return json(out);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -363,6 +408,13 @@ export default {
     if (url.pathname === '/admin/freee/probe') {
       if (!isAdmin(request, env)) return json({ error: 'unauthorized' }, 401);
       return handleFreeeProbe(env);
+    }
+
+    // 読み取り専用。keiri-erp の PRE-3 で使う。GET のみ。
+    if (url.pathname === '/admin/freee/master') {
+      if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
+      if (!isAdmin(request, env)) return json({ error: 'unauthorized' }, 401);
+      return handleFreeeMaster(env);
     }
 
     if (url.pathname === '/admin/reconcile') {
