@@ -109,6 +109,8 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
       event.type
     ),
   ];
+  // 過去に失敗したイベントの再送が成功したら、失敗記録は解決済み。残すと照合が永久に誤報する。
+  statements.push(env.DB.prepare('DELETE FROM failed_events WHERE event_id = ?').bind(event.id));
   if (draft) {
     const total = draft.lines
       .filter((l) => l.side === 'debit')

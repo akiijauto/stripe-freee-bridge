@@ -143,7 +143,10 @@ export async function reconcile(env: ReconcileEnv, now = new Date(), days = 31):
   const pending = await env.DB.prepare(
     "SELECT COUNT(*) as n FROM journal_drafts WHERE status = 'pending'"
   ).first<{ n: number }>();
-  const failed = await env.DB.prepare('SELECT COUNT(*) as n FROM failed_events').first<{ n: number }>();
+  const failed = await env.DB.prepare(
+    // 後の再送で処理済みになったものは解決済みなので数えない。
+    'SELECT COUNT(*) as n FROM failed_events WHERE event_id NOT IN (SELECT event_id FROM processed_events)'
+  ).first<{ n: number }>();
 
   if ((failed?.n ?? 0) > 0) {
     findings.push({

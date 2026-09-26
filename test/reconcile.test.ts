@@ -58,6 +58,9 @@ async function resetTables(): Promise<void> {
     "CREATE TABLE IF NOT EXISTS journal_drafts (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, event_type TEXT NOT NULL, issue_date TEXT NOT NULL, memo TEXT NOT NULL, lines_json TEXT NOT NULL, total_amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', freee_manual_journal_id INTEGER, posted_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
   );
   await env.DB.exec(
+    'CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL)'
+  );
+  await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS failed_events (event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, reason TEXT NOT NULL, received_at TEXT NOT NULL DEFAULT (datetime('now')))"
   );
   await env.DB.exec(
@@ -65,6 +68,7 @@ async function resetTables(): Promise<void> {
   );
   await env.DB.exec('DELETE FROM journal_drafts');
   await env.DB.exec('DELETE FROM failed_events');
+  await env.DB.exec('DELETE FROM processed_events');
   await env.DB.exec('DELETE FROM freee_tokens');
   await env.DB.prepare(
     'INSERT INTO freee_tokens (id, access_token, refresh_token, expires_at) VALUES (1, ?, ?, ?)'
@@ -170,6 +174,26 @@ describe('照合', () => {
       const result = await reconcile(baseEnv());
       const f = result.findings.find((x) => x.label === '仕訳にできなかったイベント');
       expect(f?.level).toBe('error');
+    } finally {
+      restore();
+    }
+  });
+
+  // 後の再送で処理済みになったイベントは解決済み。失敗記録が残っていても鳴らさない。
+  it('再送で処理済みになった failed_events は数えない', async () => {
+    await env.DB.prepare(
+      'INSERT INTO failed_events (event_id, event_type, reason) VALUES (?, ?, ?)'
+    )
+      .bind('evt_retried', 'charge.succeeded', '手数料が未確定')
+      .run();
+    await env.DB.prepare('INSERT INTO processed_events (event_id, event_type) VALUES (?, ?)')
+      .bind('evt_retried', 'charge.succeeded')
+      .run();
+
+    const restore = stubApis({ stripeCharges: [], freeeJournals: [] });
+    try {
+      const result = await reconcile(baseEnv());
+      expect(result.findings.find((x) => x.label === '仕訳にできなかったイベント')).toBeUndefined();
     } finally {
       restore();
     }
