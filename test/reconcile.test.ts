@@ -21,7 +21,7 @@ function baseEnv(): ReconcileEnv {
 /** Stripeとfreeeの応答を差し替える。ネットワークへは出さない。 */
 function stubApis(opts: {
   stripeCharges: { id: string; amount: number; status: string; fee: number }[];
-  freeeJournals: { entry_side: string; account_item_id: number; amount: number }[][];
+  freeeJournals: { entry_side: string; account_item_id: number; amount: number; description?: string }[][];
 }) {
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -42,7 +42,7 @@ function stubApis(opts: {
     }
     if (url.includes('api.freee.co.jp/api/1/manual_journals')) {
       return new Response(
-        JSON.stringify({ manual_journals: opts.freeeJournals.map((details) => ({ details })) }),
+        JSON.stringify({ manual_journals: opts.freeeJournals.map((details, i) => ({ id: i + 1, details })) }),
         { status: 200 }
       );
     }
@@ -104,6 +104,31 @@ describe('照合', () => {
       expect(result.findings).toEqual([]);
       expect(result.stripeSalesTotal).toBe(10000);
       expect(result.freeeSalesTotal).toBe(10000);
+    } finally {
+      restore();
+    }
+  });
+
+  // 手動テストで入れた伝票は実売上ではないので、突き合わせに含めない。
+  it('摘要に TEST を含む伝票は突き合わせから除外する', async () => {
+    const restore = stubApis({
+      stripeCharges: [{ id: 'ch_1', amount: 10000, status: 'succeeded', fee: 360 }],
+      freeeJournals: [
+        [
+          { entry_side: 'debit', account_item_id: 1072165672, amount: 9640, description: 'Stripe売上 ch_1' },
+          { entry_side: 'debit', account_item_id: 1072165784, amount: 360, description: 'Stripe売上 ch_1' },
+          { entry_side: 'credit', account_item_id: 1072165747, amount: 10000, description: 'Stripe売上 ch_1' },
+        ],
+        [
+          { entry_side: 'debit', account_item_id: 1072165672, amount: 2892, description: 'Stripe売上 ch_PRODTEST' },
+          { entry_side: 'debit', account_item_id: 1072165784, amount: 108, description: 'Stripe売上 ch_PRODTEST' },
+          { entry_side: 'credit', account_item_id: 1072165747, amount: 3000, description: 'Stripe売上 ch_PRODTEST' },
+        ],
+      ],
+    });
+    try {
+      const result = await reconcile(baseEnv());
+      expect(result.findings).toEqual([]);
     } finally {
       restore();
     }

@@ -32,6 +32,9 @@ export interface ReconcileResult {
   freeeFeeTotal: number;
 }
 
+/** 実売上ではない手動テスト伝票（テスト事業所）。 */
+const KNOWN_TEST_JOURNAL_IDS = new Set([3765989845]);
+
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function jstDate(date: Date): string {
@@ -111,12 +114,19 @@ async function freeeTotals(
   if (!res.ok) throw new Error(`freeeの振替伝票取得に失敗: HTTP ${res.status}`);
 
   const payload = (await res.json()) as {
-    manual_journals: { details: { entry_side: string; account_item_id: number; amount: number }[] }[];
+    manual_journals: {
+      id: number;
+      details: { entry_side: string; account_item_id: number; amount: number; description?: string | null }[];
+    }[];
   };
 
   let sales = 0;
   let fee = 0;
   for (const journal of payload.manual_journals) {
+    // P2の最初のテスト投入。当時は摘要を送っておらず、TEST では見分けられないのでIDで除外する。
+    if (KNOWN_TEST_JOURNAL_IDS.has(journal.id)) continue;
+    // 手動テストで入れた伝票（摘要に TEST を含む。実際のStripe IDには現れない）は突き合わせの対象外。
+    if (journal.details.some((d) => /TEST/.test(d.description ?? ''))) continue;
     for (const d of journal.details) {
       // 売上は貸方が増加、返金で借方に立つので差し引く。
       if (d.account_item_id === accountIds.sales) {
