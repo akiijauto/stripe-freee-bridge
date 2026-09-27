@@ -98,7 +98,7 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET -c wrangler.local.jsonc
 
 ```bash
 npm run dev    # ローカル起動。秘密は --var で渡すか .dev.vars に置く（.dev.vars は.gitignore済み）
-npm test       # vitest（53件）
+npm test       # vitest（56件）
 npm run deploy # 本番へデプロイ
 ```
 
@@ -120,6 +120,13 @@ Stripeの再送には回数の限りがあり、諦められた時点で売上�
 
 承認待ちが残っているうちは金額が合わなくて当然なので、**その間は金額差では鳴らさない。**
 鳴りっぱなしの見張りは無視されるようになる。
+
+- `failed_events` は、後の再送で処理済みになったイベントを**解決済みとして数えない**
+  （処理成功時に記録も削除する）。残すと毎朝誤報する
+- **手動テスト伝票は照合から除外する**: 摘要に `TEST` を含むもの、および `KNOWN_TEST_JOURNAL_IDS`
+  （`src/reconcile.ts`）に載せたID。実売上の突き合わせにテストが混ざらないようにするため
+- 承認は確認画面（`GET /`）では行えない。**画面は閲覧専用**で、投入は
+  `POST /api/drafts/{id}/post`（管理トークン必須）のみ
 
 手動でも走らせられる: `POST /admin/reconcile`（管理トークン必須）
 
